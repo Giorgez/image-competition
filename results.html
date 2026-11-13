@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>შედეგები</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-brand">ფოტო კონკურსი</span>
+    <span class="nav-user" id="navUser"></span>
+    <button class="nav-btn" onclick="window.location.href='vote.html'">← ხმა</button>
+  </nav>
+
+  <div class="results-wrap" id="content">
+    <div class="empty">იტვირთება...</div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    async function load() {
+      const user = requireUser();
+      if (!user) return;
+      document.getElementById('navUser').textContent = user.name;
+
+      const [iR, cR, uR, vR] = await Promise.all([
+        sb.from('images').select('*').order('created_at'),
+        sb.from('categories').select('*').order('created_at'),
+        sb.from('users').select('id,name').eq('is_admin', false).order('name'),
+        sb.from('votes').select('*')
+      ]);
+
+      const imgs    = iR.data || [];
+      const cats    = cR.data || [];
+      const jurors  = uR.data || [];
+      const allV    = vR.data || [];
+
+      // Total score per image
+      const totals = {};
+      imgs.forEach(i => { totals[i.id] = 0; });
+      allV.forEach(v => { if (totals[v.image_id] !== undefined) totals[v.image_id] += v.score; });
+
+      const sorted  = [...imgs].sort((a, b) => (totals[b.id] || 0) - (totals[a.id] || 0));
+      const top3    = sorted.slice(0, 3);
+      const myVotes = allV.filter(v => v.user_id === user.id);
+
+      const totalPossible = imgs.length * cats.length;
+
+      let h = '';
+
+      // ── Podium ────────────────────────────────
+      if (top3.length) {
+        h += `<div class="block"><div class="section-title block-title">ტოპ 3</div>
+          <div class="podium">`;
+        const medals = ['🥇', '🥈', '🥉'];
+        const cls    = ['p1', 'p2', 'p3'];
+        top3.forEach((img, i) => {
+          h += `<div class="pod-card ${cls[i]}">
+            <img src="${img.image_url}" alt="${img.title}" onerror="this.style.opacity='.25'">
+            <div class="pod-info">
+              <div class="pod-medal">${medals[i]}</div>
+              <div class="pod-name">${img.title}</div>
+              <div class="pod-artist">${img.artist_name}</div>
+              <div class="pod-score">${totals[img.id] || 0}</div>
+            </div>
+          </div>`;
+        });
+        h += '</div></div>';
+      }
+
+      // ── Jury status ───────────────────────────
+      h += `<div class="block"><div class="section-title block-title">ჟიური</div>
+        <div style="display:flex;flex-direction:column;gap:6px">`;
+      jurors.forEach(j => {
+        const cnt  = allV.filter(v => v.user_id === j.id).length;
+        const done = cnt >= totalPossible && totalPossible > 0;
+        const me   = j.id === user.id ? ' <span style="color:var(--muted);font-size:11px">(შენ)</span>' : '';
+        const tag  = done
+          ? '<span class="tag tag-ok">დასრულდა ✓</span>'
+          : cnt === 0
+            ? '<span class="tag tag-muted">ჯერ არ დაწყებულა</span>'
+            : `<span class="tag tag-warn">${cnt} / ${totalPossible}</span>`;
+        h += `<div class="list-row"><span>${j.name}${me}</span>${tag}</div>`;
+      });
+      h += '</div></div>';
+
+      // ── My votes ─────────────────────────────
+      if (myVotes.length && cats.length) {
+        h += `<div class="block"><div class="section-title block-title">ჩემი შეფასებები</div>
+          <div class="table-wrap"><table>
+            <thead><tr>
+              <th>სურათი</th>
+              ${cats.map(c => `<th>${c.name}</th>`).join('')}
+              <th>სულ</th>
+            </tr></thead><tbody>`;
+
+        imgs.forEach(img => {
+          const mine = myVotes.filter(v => v.image_id === img.id);
+          if (!mine.length) return;
+          const catTotals = cats.map(c => { const v = mine.find(v => v.category_id === c.id); return v ? v.score : null; });
+          const sum = catTotals.reduce((s, v) => s + (v ?? 0), 0);
+          h += `<tr>
+            <td><span class="td-img">${img.title}</span>
+                <span class="td-sub">${img.artist_name}</span></td>
+            ${catTotals.map(s => `<td class="score-cell">${s !== null ? s : '—'}</td>`).join('')}
+            <td class="score-total score-cell">${mine.length ? sum : '—'}</td>
+          </tr>`;
+        });
+
+        h += '</tbody></table></div></div>';
+      }
+
+      // ── Full results ──────────────────────────
+      if (allV.length) {
+        h += `<div class="block"><div class="section-title block-title">სრული შედეგები</div>
+          <div class="table-wrap"><table>
+            <thead><tr>
+              <th>#</th><th>სურათი</th>
+              ${jurors.map(j => `<th>${j.name}</th>`).join('')}
+              <th>სულ</th>
+            </tr></thead><tbody>`;
+
+        sorted.forEach((img, i) => {
+          h += `<tr>
+            <td class="score-cell" style="color:var(--muted)">${i + 1}</td>
+            <td><span class="td-img">${img.title}</span>
+                <span class="td-sub">${img.artist_name}</span></td>
+            ${jurors.map(j => {
+              const jv = allV.filter(v => v.user_id === j.id && v.image_id === img.id);
+              const s  = jv.reduce((a, v) => a + v.score, 0);
+              return `<td class="score-cell">${jv.length ? s : '—'}</td>`;
+            }).join('')}
+            <td class="score-total score-cell">${totals[img.id] || 0}</td>
+          </tr>`;
+        });
+
+        h += '</tbody></table></div></div>';
+      } else {
+        h += '<div class="empty">ხმები ჯერ არ არის</div>';
+      }
+
+      document.getElementById('content').innerHTML = h;
+    }
+
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ადმინი</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- PIN screen -->
+  <div id="pinScreen" class="pin-screen">
+    <div class="pin-title">⚙️ ადმინი</div>
+    <div class="card" style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:14px">
+      <div class="form-group">
+        <label>PIN კოდი</label>
+        <input type="password" id="pinInput" class="pin-input" placeholder="••••" maxlength="30"
+               onkeydown="if(event.key==='Enter')checkPin()">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="checkPin()">შესვლა</button>
+    </div>
+  </div>
+
+  <!-- Admin panel -->
+  <div id="adminPanel" style="display:none">
+    <nav>
+      <span class="nav-brand">⚙️ ადმინი</span>
+      <span></span>
+      <button class="nav-btn" onclick="location.reload()">გამოსვლა</button>
+    </nav>
+
+    <div class="admin-wrap">
+      <div class="tabs">
+        <button class="tab active" onclick="tab('images',this)">სურათები</button>
+        <button class="tab" onclick="tab('cats',this)">კატეგორიები</button>
+        <button class="tab" onclick="tab('jurors',this)">ჟიური</button>
+        <button class="tab" onclick="tab('results',this)">შედეგები</button>
+      </div>
+
+      <!-- Images tab -->
+      <div id="tab-images">
+        <div class="card" style="margin-bottom:16px;display:flex;flex-direction:column;gap:14px">
+          <div class="section-title">სურათის დამატება</div>
+          <div class="form-group">
+            <label>სახელი</label>
+            <input type="text" id="iTitle" placeholder="სურათის სახელი">
+          </div>
+          <div class="form-group">
+            <label>ავტორი</label>
+            <input type="text" id="iArtist" placeholder="ავტორი">
+          </div>
+          <div class="form-group">
+            <label>ფაილი</label>
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('iFile').click()">
+              <input type="file" id="iFile" accept="image/*" onchange="previewFile(this)">
+              <div id="iPreview"><p>📷 დაჭერით ან გადმოათრიეთ</p></div>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="uploadBtn" onclick="uploadImg()">ატვირთვა</button>
+        </div>
+        <div class="section-title" style="margin-bottom:10px">სია</div>
+        <div id="imgList"></div>
+      </div>
+
+      <!-- Categories tab -->
+      <div id="tab-cats" style="display:none">
+        <div class="card" style="margin-bottom:16px;display:flex;flex-direction:column;gap:14px">
+          <div class="section-title">კატეგორიის დამატება</div>
+          <div class="form-group">
+            <label>სახელი</label>
+            <input type="text" id="cName" placeholder="მაგ: კომპოზიცია">
+          </div>
+          <button class="btn btn-primary" onclick="addCat()">დამატება</button>
+        </div>
+        <div class="section-title" style="margin-bottom:10px">სია</div>
+        <div id="catList"></div>
+      </div>
+
+      <!-- Jurors tab -->
+      <div id="tab-jurors" style="display:none">
+        <div class="card" style="margin-bottom:16px;display:flex;flex-direction:column;gap:14px">
+          <div class="section-title">ჟიურის წევრის დამატება</div>
+          <div class="form-group">
+            <label>სახელი</label>
+            <input type="text" id="jName" placeholder="სახელი გვარი">
+          </div>
+          <button class="btn btn-primary" onclick="addJuror()">დამატება</button>
+        </div>
+        <div class="section-title" style="margin-bottom:10px">წევრები</div>
+        <div id="jurorList"></div>
+      </div>
+
+      <!-- Results tab -->
+      <div id="tab-results" style="display:none">
+        <div id="adminRes"><div class="empty">იტვირთება...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    async function checkPin() {
+      const pin = document.getElementById('pinInput').value;
+      const { data, error } = await sb.from('config').select('value').eq('key','admin_pin').single();
+      if (error || !data) { toast('შეცდომა'); return; }
+      if (data.value !== pin) { toast('არასწორი PIN'); return; }
+      document.getElementById('pinScreen').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      loadAll();
+    }
+
+    function tab(name, btn) {
+      ['images','cats','jurors','results'].forEach(t =>
+        document.getElementById('tab-' + t).style.display = t === name ? 'block' : 'none');
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (name === 'results') loadAdminResults();
+    }
+
+    async function loadAll() {
+      await Promise.all([loadImgs(), loadCats(), loadJurors()]);
+    }
+
+    // ── Images ──────────────────────────────────
+    async function loadImgs() {
+      const { data } = await sb.from('images').select('*').order('created_at', { ascending: false });
+      document.getElementById('imgList').innerHTML = (data || []).length
+        ? (data || []).map(img => `
+            <div class="list-row">
+              <img src="${img.image_url}" class="list-thumb" onerror="this.style.opacity='.25'">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:600;font-size:14px">${img.title}</div>
+                <div style="color:var(--sub);font-size:12px">${img.artist_name}</div>
+              </div>
+              <button class="btn btn-danger btn-sm" onclick="delImg('${img.id}','${img.storage_path || ''}')">წაშლა</button>
+            </div>`).join('')
+        : '<div class="empty">სურათები არ არის</div>';
+    }
+
+    function previewFile(inp) {
+      const file = inp.files[0];
+      if (!file) return;
+      const r = new FileReader();
+      r.onload = e => {
+        document.getElementById('iPreview').innerHTML =
+          `<img src="${e.target.result}" style="max-height:180px;border-radius:8px;margin:0 auto">`;
+      };
+      r.readAsDataURL(file);
+    }
+
+    async function uploadImg() {
+      const title  = document.getElementById('iTitle').value.trim();
+      const artist = document.getElementById('iArtist').value.trim();
+      const file   = document.getElementById('iFile').files[0];
+      if (!title || !artist || !file) { toast('შეავსე ყველა ველი'); return; }
+
+      const btn = document.getElementById('uploadBtn');
+      btn.textContent = 'ატვირთავს...'; btn.disabled = true;
+
+      const ext  = file.name.split('.').pop().toLowerCase();
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error: upErr } = await sb.storage.from('competition-images').upload(path, file, { cacheControl: '3600' });
+      if (upErr) { toast('ატვირთვის შეცდომა: ' + upErr.message); btn.textContent='ატვირთვა'; btn.disabled=false; return; }
+
+      const { data: urlData } = sb.storage.from('competition-images').getPublicUrl(path);
+
+      const { error } = await sb.from('images').insert({
+        title, artist_name: artist, image_url: urlData.publicUrl, storage_path: path
+      });
+      btn.textContent = 'ატვირთვა'; btn.disabled = false;
+      if (error) { toast('შეცდომა: ' + error.message); return; }
+
+      document.getElementById('iTitle').value = '';
+      document.getElementById('iArtist').value = '';
+      document.getElementById('iFile').value = '';
+      document.getElementById('iPreview').innerHTML = '<p>📷 დაჭერით ან გადმოათრიეთ</p>';
+      toast('სურათი დაემატა ✓');
+      loadImgs();
+    }
+
+    async function delImg(id, path) {
+      if (!confirm('სურათი წაიშლება. დარწმუნებული ხარ?')) return;
+      if (path) await sb.storage.from('competition-images').remove([path]);
+      await sb.from('images').delete().eq('id', id);
+      toast('სურათი წაიშალა');
+      loadImgs();
+    }
+
+    // ── Categories ───────────────────────────────
+    async function loadCats() {
+      const { data } = await sb.from('categories').select('*').order('created_at');
+      document.getElementById('catList').innerHTML = (data || []).length
+        ? (data || []).map(c => `
+            <div class="list-row">
+              <span>${c.name}</span>
+              <button class="btn btn-danger btn-sm" onclick="delCat('${c.id}')">წაშლა</button>
+            </div>`).join('')
+        : '<div class="empty">კატეგორიები არ არის</div>';
+    }
+
+    async function addCat() {
+      const name = document.getElementById('cName').value.trim();
+      if (!name) { toast('შეიყვანე სახელი'); return; }
+      const { error } = await sb.from('categories').insert({ name });
+      if (error) { toast('შეცდომა: ' + error.message); return; }
+      document.getElementById('cName').value = '';
+      toast('კატეგორია დაემატა ✓');
+      loadCats();
+    }
+
+    async function delCat(id) {
+      if (!confirm('კატეგორია წაიშლება. ყველა ხმა ამ კატეგორიაში წაიშლება!')) return;
+      await sb.from('categories').delete().eq('id', id);
+      toast('კატეგორია წაიშალა');
+      loadCats();
+    }
+
+    // ── Jurors ───────────────────────────────────
+    async function loadJurors() {
+      const { data } = await sb.from('users').select('*').eq('is_admin', false).order('name');
+      document.getElementById('jurorList').innerHTML = (data || []).length
+        ? (data || []).map(j => `
+            <div class="list-row">
+              <span>${j.name}</span>
+              <button class="btn btn-danger btn-sm" onclick="delJuror('${j.id}')">წაშლა</button>
+            </div>`).join('')
+        : '<div class="empty">წევრები არ არის</div>';
+    }
+
+    async function addJuror() {
+      const name = document.getElementById('jName').value.trim();
+      if (!name) { toast('შეიყვანე სახელი'); return; }
+      const { error } = await sb.from('users').insert({ name, is_admin: false });
+      if (error) { toast('შეცდომა: ' + error.message); return; }
+      document.getElementById('jName').value = '';
+      toast('წევრი დაემატა ✓');
+      loadJurors();
+    }
+
+    async function delJuror(id) {
+      if (!confirm('წევრი წაიშლება. მისი ყველა ხმა წაიშლება!')) return;
+      await sb.from('users').delete().eq('id', id);
+      toast('წევრი წაიშალა');
+      loadJurors();
+    }
+
+    // ── Admin results ─────────────────────────────
+    async function loadAdminResults() {
+      const [iR, uR, vR] = await Promise.all([
+        sb.from('images').select('*').order('created_at'),
+        sb.from('users').select('id,name').eq('is_admin',false).order('name'),
+        sb.from('votes').select('*')
+      ]);
+      const imgs   = iR.data || [];
+      const jurors = uR.data || [];
+      const allV   = vR.data || [];
+
+      const totals = {};
+      imgs.forEach(i => { totals[i.id] = 0; });
+      allV.forEach(v => { if (totals[v.image_id] !== undefined) totals[v.image_id] += v.score; });
+
+      const sorted = [...imgs].sort((a,b) => (totals[b.id]||0) - (totals[a.id]||0));
+
+      let h = `<div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>სურათი</th>
+          ${jurors.map(j => `<th>${j.name}</th>`).join('')}
+          <th>სულ</th>
+        </tr></thead><tbody>`;
+
+      sorted.forEach((img, i) => {
+        h += `<tr>
+          <td class="score-cell" style="color:var(--muted)">${i+1}</td>
+          <td><span class="td-img">${img.title}</span>
+              <span class="td-sub">${img.artist_name}</span></td>
+          ${jurors.map(j => {
+            const jv = allV.filter(v => v.user_id===j.id && v.image_id===img.id);
+            return `<td class="score-cell">${jv.length ? jv.reduce((s,v)=>s+v.score,0) : '—'}</td>`;
+          }).join('')}
+          <td class="score-total score-cell">${totals[img.id]||0}</td>
+        </tr>`;
+      });
+
+      h += '</tbody></table></div>';
+      document.getElementById('adminRes').innerHTML = sorted.length ? h : '<div class="empty">ხმები ჯერ არ არის</div>';
+    }
+  </script>
+</body>
+</html>

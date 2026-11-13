@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ფოტო კონკურსი</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="center">
+    <div class="landing">
+      <div>
+        <div style="font-size:36px;margin-bottom:12px">🏆</div>
+        <h1 class="landing-title">ფოტო კონკურსი</h1>
+        <p class="landing-sub">ხმის მიცემა</p>
+      </div>
+
+      <div class="card" style="text-align:left;width:100%">
+        <div class="form-group">
+          <label>ვინ ხარ?</label>
+          <select id="voterSelect">
+            <option value="">— აირჩიე —</option>
+          </select>
+        </div>
+        <div style="margin-top:14px">
+          <button class="btn btn-primary btn-full" onclick="enter()">შესვლა →</button>
+        </div>
+        <div style="margin-top:10px;text-align:center">
+          <button class="btn btn-ghost btn-full btn-sm" onclick="window.location.href='results.html'" id="resultsLink" style="display:none">შედეგების ნახვა</button>
+        </div>
+      </div>
+
+      <a href="admin.html" style="font-size:12px;color:var(--muted)">ადმინი</a>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    async function load() {
+      // redirect if already logged in
+      const u = getUser();
+      if (u) {
+        document.getElementById('resultsLink').style.display = 'flex';
+      }
+
+      const { data, error } = await sb.from('users').select('id,name').eq('is_admin', false).order('name');
+      if (error) { toast('შეცდომა: ' + error.message); return; }
+
+      const sel = document.getElementById('voterSelect');
+      (data || []).forEach(u => {
+        const o = document.createElement('option');
+        o.value = JSON.stringify(u);
+        o.textContent = u.name;
+        sel.appendChild(o);
+      });
+
+      // pre-select if already logged in
+      if (u) {
+        for (let o of sel.options) {
+          try {
+            if (JSON.parse(o.value)?.id === u.id) { sel.value = o.value; break; }
+          } catch {}
+        }
+      }
+    }
+
+    function enter() {
+      const val = document.getElementById('voterSelect').value;
+      if (!val) { toast('გთხოვ, აირჩიე ვინ ხარ'); return; }
+      setUser(JSON.parse(val));
+      window.location.href = 'vote.html';
+    }
+
+    document.getElementById('voterSelect').addEventListener('keydown', e => {
+      if (e.key === 'Enter') enter();
+    });
+
+    load();
+  </script>
+</body>
+</html>
