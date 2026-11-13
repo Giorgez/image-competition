@@ -38,7 +38,10 @@
   <!-- Voting Modal -->
   <div class="overlay" id="overlay" onclick="bgClose(event)">
     <div class="modal" id="modal">
-      <img class="modal-img" id="mImg" src="" alt="" onerror="this.style.opacity='.25'">
+      <div class="modal-img-wrap" onclick="openLightbox()">
+        <img class="modal-img" id="mImg" src="" alt="" onerror="this.style.opacity='.25'">
+        <div class="zoom-hint">⤢</div>
+      </div>
       <div class="modal-body">
         <div class="modal-head">
           <div>
@@ -55,6 +58,21 @@
           <button class="btn btn-primary" onclick="saveVotes()">შენახვა</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" onclick="closeLightbox()"
+       style="position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:200;display:none;
+              align-items:center;justify-content:center;cursor:zoom-out">
+    <img id="lbImg" src="" alt=""
+         style="max-width:95vw;max-height:95vh;object-fit:contain;user-select:none;border-radius:4px">
+    <div style="position:absolute;top:16px;left:0;right:0;display:flex;align-items:center;
+                justify-content:space-between;padding:0 20px;pointer-events:none">
+      <span id="lbCaption" style="color:rgba(255,255,255,.65);font-size:13px"></span>
+      <button onclick="event.stopPropagation();closeLightbox()"
+              style="background:rgba(255,255,255,.12);border:none;color:#fff;width:36px;height:36px;
+                     border-radius:50%;font-size:18px;cursor:pointer;pointer-events:all">✕</button>
     </div>
   </div>
 
@@ -119,6 +137,7 @@
             </div>
           </div>`;
       }).join('');
+      initHoverZoom();
     }
 
     function updateProg() {
@@ -194,6 +213,37 @@
       document.getElementById('overlay').classList.remove('open');
       document.body.style.overflow = '';
       curImg = null;
+    }
+
+    // ── Lightbox ─────────────────────────────
+    function openLightbox() {
+      if (!curImg) return;
+      document.getElementById('lbImg').src = curImg.image_url;
+      document.getElementById('lbCaption').textContent = `${curImg.title}  ·  ${curImg.artist_name}`;
+      document.getElementById('lightbox').style.display = 'flex';
+    }
+    function closeLightbox() {
+      document.getElementById('lightbox').style.display = 'none';
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+    // ── Hover zoom on grid (cursor-following) ─
+    function initHoverZoom() {
+      document.querySelectorAll('.img-card').forEach(card => {
+        const img = card.querySelector('img');
+        if (!img) return;
+        card.addEventListener('mousemove', e => {
+          const r = card.getBoundingClientRect();
+          const x = ((e.clientX - r.left) / r.width  * 100).toFixed(1);
+          const y = ((e.clientY - r.top)  / r.height * 100).toFixed(1);
+          img.style.transformOrigin = `${x}% ${y}%`;
+          img.style.transform = 'scale(1.5)';
+        });
+        card.addEventListener('mouseleave', () => {
+          img.style.transform = '';
+          img.style.transformOrigin = 'center';
+        });
+      });
     }
 
     load();
